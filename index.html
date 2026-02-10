@@ -350,7 +350,17 @@
                 }
             }
 
-            // ... initModule ...
+            initModule(m) {
+                this.modules[m.id] = {
+                    total: m.id === 'surgery' ? 32 : 1, // Default Logic
+                    completed: 0,
+                    units: {},
+                    assignments: {},
+                    assignmentsTotal: m.assignmentList ? m.assignmentList.length : 0,
+                    procedures: 0,
+                    notes: ''
+                };
+            }
 
             saveData() {
                 localStorage.setItem('mmed_tracker_data', JSON.stringify({
