@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MMED (Rural Health) Progress Tracker</title>
+    <title>Master of Medicine (Rural) - Electronic Logbook</title>
     <!-- Removed Tailwind CDN for Offline Support -->
     <style>
         * {
@@ -62,7 +62,7 @@
                 // actually, I can just replace the definition line, and then the AppState separately.
 
                 name: 'Surgery (Module 1)',
-                color: '#ef4444',
+                color: '#15803d', // Forest Green
                 duration: '9 months',
                 procedures: 45,
                 type: 'clinical',
@@ -126,7 +126,7 @@
             {
                 id: 'anaesthesia',
                 name: 'Anaesthesiology (Module 2)',
-                color: '#64748b',
+                color: '#64748b', // Slate is fine, or Earthy
                 duration: '4 months',
                 procedures: 50,
                 type: 'clinical',
@@ -323,7 +323,8 @@
                         this.procedureLog = data.procedureLog || [];
                         this.milestones = data.milestones || {};
                         this.logbook = data.logbook || {};
-                        this.user = data.user || null;
+                        this.account = data.account || null;
+                        this.session = null; // Session is always fresh on load
                         this.lastBackupDate = data.lastBackupDate || null;
 
                         // Load dynamic config if present
@@ -369,7 +370,7 @@
                     milestones: this.milestones,
                     logbook: this.logbook,
                     moduleConfigs: moduleConfigs,
-                    user: this.user,
+                    account: this.account,
                     lastBackupDate: this.lastBackupDate,
                     lastSaved: new Date().toISOString()
                 }));
@@ -391,7 +392,7 @@
                     milestones: this.milestones,
                     logbook: this.logbook,
                     moduleConfigs: moduleConfigs,
-                    user: this.user,
+                    account: this.account,
                     lastBackupDate: new Date().toISOString() // Update backup time
                 };
 
@@ -429,7 +430,7 @@
                         this.procedureLog = data.procedureLog || [];
                         this.milestones = data.milestones || {};
                         this.logbook = data.logbook || {};
-                        this.user = data.user || null;
+                        this.account = data.account || data.user || null; // Support legacy 'user' key
                         this.lastBackupDate = data.lastBackupDate || new Date().toISOString();
 
                         if (data.moduleConfigs) {
@@ -452,32 +453,58 @@
             }
 
             register(name, id, year, password, question, answer) {
-                this.user = { name, id, year, password, securityQuestion: question, securityAnswer: answer };
+                this.account = {
+                    name,
+                    id,
+                    year,
+                    password,
+                    securityQuestion: question,
+                    securityAnswer: answer,
+                    needsPasswordChange: true // Default for new activations
+                };
+                this.session = { isLoggedIn: true };
                 this.saveData();
                 return true;
             }
 
+            login(id, password) {
+                if (!this.account) return false;
+                if (this.account.id === id && this.account.password === password) {
+                    this.session = { isLoggedIn: true };
+                    return true;
+                }
+                return false;
+            }
+
+            logout() {
+                this.session = null;
+                this.notify();
+            }
+
+            changePassword(newPassword) {
+                if (this.account) {
+                    this.account.password = newPassword;
+                    this.account.needsPasswordChange = false;
+                    this.saveData();
+                }
+            }
+
             resetPassword(id, answer, newPassword) {
-                if (!this.user || this.user.id !== id) return false;
-                if (this.user.securityAnswer && this.user.securityAnswer.toLowerCase() === answer.toLowerCase()) {
-                    this.user.password = newPassword;
+                if (!this.account || this.account.id !== id) return false;
+                if (this.account.securityAnswer && this.account.securityAnswer.toLowerCase() === answer.toLowerCase()) {
+                    this.account.password = newPassword;
+                    this.account.needsPasswordChange = false; // Resetting implies they know it now
                     this.saveData();
                     return true;
                 }
                 return false;
             }
 
-            login(id, password) {
-                if (!this.user) return false;
-                if (this.user.id === id && this.user.password === password) return true;
-                return false;
-            }
-
             updateProfile(name, year, password) {
-                if (this.user) {
-                    this.user.name = name;
-                    this.user.year = year;
-                    if (password) this.user.password = password;
+                if (this.account) {
+                    this.account.name = name;
+                    this.account.year = year;
+                    if (password) this.account.password = password;
                     this.saveData();
                 }
             }
@@ -515,10 +542,14 @@
                     // Update generic completion (optional, or just rely on weeks view)
                     // We could count 'Done' weeks
                 } else if (type === 'assignment') {
-                    if (mod.assignments[data.id] === 'Done') {
-                        delete mod.assignments[data.id];
-                    } else {
-                        mod.assignments[data.id] = 'Done';
+                } else if (type === 'assignment') {
+                    // data: { id, field, value }
+                    if (!mod.assignments[data.id]) mod.assignments[data.id] = {};
+                    mod.assignments[data.id][data.field] = data.value;
+
+                    // Auto-set status if dates are present (optional logic, but good for UX)
+                    if (data.field === 'dateSubmitted' && data.value) {
+                        mod.assignments[data.id].status = 'Done';
                     }
                 } else if (type === 'caseReport') {
                     if (!mod.caseReports) mod.caseReports = {};
@@ -598,9 +629,9 @@
                     th { background: #f3f4f6; }
                     @media print { button { display: none; } }
                 </style></head><body>
-                <h1>MMED Procedure Log - ${moduleName}</h1>
+                <h1 style="color:#15803d; border-bottom: 2px solid #15803d; padding-bottom: 10px;">Master of Medicine (Rural) - Procedure Log</h1>
                 <p>Print Date: ${new Date().toLocaleDateString()}</p>
-                <p>Trainee: <strong>${state.user ? state.user.name : '_____________________'}</strong> (ID: ${state.user ? state.user.id : '________'})</p>
+                <p>Trainee: <strong>${state.account ? state.account.name : '_____________________'}</strong> (ID: ${state.account ? state.account.id : '________'})</p>
                 <table>
                     <tr><th>#</th><th>Date</th><th>Procedure</th><th>Supervisor</th><th>Notes</th><th>Signature</th></tr>
                     ${procs.map((p, i) => `
@@ -635,10 +666,10 @@
                     .progress-fill { background: #10b981; height: 100%; border-radius: 10px; }
                     @media print { button { display: none; } }
                 </style></head><body>
-                <h1>MMED (Rural Health) Progress Report</h1>
+                <h1 style="color:#15803d; border-bottom: 2px solid #15803d; padding-bottom: 10px;">Master of Medicine (Rural) - Progress Report</h1>
                 <p>Report Date: ${new Date().toLocaleDateString()}</p>
-                <p>Trainee: <strong>${state.user ? state.user.name : '_____________________'}</strong> (ID: ${state.user ? state.user.id : '________'})</p>
-                <p>Current Year: ${state.user ? state.user.year : state.currentYear} of 6 | Overall Progress: ${calculateOverallProgress()}%</p>
+                <p>Trainee: <strong>${state.account ? state.account.name : '_____________________'}</strong> (ID: ${state.account ? state.account.id : '________'})</p>
+                <p>Current Year: ${state.account ? state.account.year : state.currentYear} of 6 | Overall Progress: ${calculateOverallProgress()}%</p>
                 <h2>Module Progress</h2>
                 ${moduleConfigs.map(m => {
                 const mod = state.modules[m.id];
@@ -694,9 +725,9 @@
                 </div>
             </div>
 
-            <div style="background:linear-gradient(to right,#2563eb,#9333ea);border-radius:12px;padding:30px;color:white;margin-bottom:20px">
-                <h1 style="font-size:2em;font-weight:bold;margin-bottom:10px">MMED (Rural Health) Progress</h1>
-                <p style="opacity:0.9">Year ${state.currentYear} of 6</p>
+            <div style="background:linear-gradient(to right, #15803d, #0ea5e9);border-radius:12px;padding:30px;color:white;margin-bottom:20px;box-shadow:0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06)">
+                <h1 style="font-size:2em;font-weight:bold;margin-bottom:10px;text-shadow:0 2px 4px rgba(0,0,0,0.1)">Master of Medicine (Rural)</h1>
+                <p style="opacity:0.9">Year ${state.account ? state.account.year : 1} of 6</p>
                 <div style="margin-top:20px">
                     <div style="display:flex;justify-content:space-between;font-size:0.9em;margin-bottom:8px">
                         <span>Overall Progress</span>
@@ -922,15 +953,34 @@
                 const id = 'assign_' + i;
                 const isDone = mod.assignments && mod.assignments[id] === 'Done';
                 return `
-                                    <div style="padding:12px;background:${isDone ? '#f0fdf4' : '#f9fafb'};border-radius:6px;border:1px solid ${isDone ? '#bbf7d0' : '#e5e7eb'};cursor:pointer"
-                                         onclick="state.updateModule('${moduleId}', 'assignment', {id: '${id}', status: '${isDone ? '' : 'Done'}'});render()">
-                                        <div style="display:flex;align-items:center">
-                                            <div style="width:24px;height:24px;border-radius:4px;border:2px solid ${isDone ? '#22c55e' : '#d1d5db'};background:${isDone ? '#22c55e' : 'white'};display:flex;align-items:center;justify-content:center;margin-right:12px;color:white;flex-shrink:0">
-                                                ${isDone ? '✓' : ''}
+                                    <div style="padding:16px;background:${isDone ? '#f0fdf4' : 'white'};border-radius:8px;border:1px solid ${isDone ? '#bbf7d0' : '#e5e7eb'};box-shadow:0 1px 2px rgba(0,0,0,0.05)">
+                                        <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:12px">
+                                            <div style="display:flex;align-items:center">
+                                                <div style="width:24px;height:24px;border-radius:4px;border:2px solid ${isDone ? '#22c55e' : '#d1d5db'};background:${isDone ? '#22c55e' : 'white'};display:flex;align-items:center;justify-content:center;margin-right:12px;color:white;flex-shrink:0">
+                                                    ${isDone ? '✓' : ''}
+                                                </div>
+                                                <span style="font-weight:600;color:#374151;font-size:1em">${item.title || item}</span>
                                             </div>
-                                            <span style="font-weight:500;color:${isDone ? '#15803d' : '#374151'}">${item.title || item}</span>
+                                            <span style="font-size:0.75em;padding:4px 8px;border-radius:99px;background:${isDone ? '#dcfce7' : '#f3f4f6'};color:${isDone ? '#166534' : '#6b7280'};font-weight:500">
+                                                ${isDone ? 'Completed' : 'Pending'}
+                                            </span>
                                         </div>
-                                        ${item.prompt ? `<div style="font-size:0.85em;color:#6b7280;margin-top:4px;margin-left:36px;font-style:italic">${item.prompt}</div>` : ''}
+                                        ${item.prompt ? `<div style="font-size:0.9em;color:#4b5563;margin-bottom:12px;padding-left:36px;font-style:italic">${item.prompt}</div>` : ''}
+                                        
+                                        <div style="display:flex;gap:16px;padding-left:36px;flex-wrap:wrap">
+                                            <div style="display:flex;flex-direction:column;gap:4px">
+                                                <label style="font-size:0.75em;color:#6b7280;font-weight:500;text-transform:uppercase">Date Started</label>
+                                                <input type="date" value="${(mod.assignments && mod.assignments[id] && mod.assignments[id].dateStarted) || ''}"
+                                                       onchange="state.updateModule('${moduleId}', 'assignment', {id: '${id}', field: 'dateStarted', value: this.value})"
+                                                       style="padding:6px;border:1px solid #d1d5db;border-radius:4px;font-size:0.9em;color:#374151">
+                                            </div>
+                                            <div style="display:flex;flex-direction:column;gap:4px">
+                                                <label style="font-size:0.75em;color:#6b7280;font-weight:500;text-transform:uppercase">Date Submitted</label>
+                                                <input type="date" value="${(mod.assignments && mod.assignments[id] && mod.assignments[id].dateSubmitted) || ''}"
+                                                       onchange="state.updateModule('${moduleId}', 'assignment', {id: '${id}', field: 'dateSubmitted', value: this.value}); render()"
+                                                       style="padding:6px;border:1px solid #d1d5db;border-radius:4px;font-size:0.9em;color:#374151">
+                                            </div>
+                                        </div>
                                     </div>
                                     `;
             }).join('')}
@@ -1415,14 +1465,14 @@
                 <div style="min-height:100vh;background:#f3f4f6;display:flex;align-items:center;justify-content:center;padding:20px">
                     <div style="background:white;padding:40px;border-radius:12px;box-shadow:0 10px 25px -5px rgba(0,0,0,0.1);width:100%;max-width:400px">
                         <div style="text-align:center;margin-bottom:30px">
-                            <h1 style="color:#2563eb;font-size:2em;font-weight:bold;margin-bottom:10px">MMED Tracker</h1>
-                            <p style="color:#6b7280">Rural Health Training Program</p>
+                            <h1 style="color:#15803d;font-size:2em;font-weight:bold;margin-bottom:10px">Master of Medicine (Rural)</h1>
+                            <p style="color:#6b7280">Electronic Logbook & Tracker</p>
                         </div>
 
-                        ${localStorage.getItem('mmed_tracker_data') && JSON.parse(localStorage.getItem('mmed_tracker_data')).user ? `
+                        ${localStorage.getItem('mmed_tracker_data') && JSON.parse(localStorage.getItem('mmed_tracker_data')).account ? `
                             <div id="loginForm">
                                 <form onsubmit="event.preventDefault(); if(state.login(document.getElementById('loginId').value, document.getElementById('loginPass').value)) render(); else alert('Invalid credentials');">
-                                    <h2 style="font-size:1.2em;font-weight:600;margin-bottom:20px;color:#374151">Welcome Back</h2>
+                                    <h2 style="font-size:1.2em;font-weight:600;margin-bottom:20px;color:#374151">Student Login</h2>
                                     <div style="display:grid;gap:16px">
                                         <div style="display:flex;flex-direction:column;gap:6px">
                                             <label style="font-size:0.9em;color:#4b5563">ID Number</label>
@@ -1431,25 +1481,30 @@
                                         </div>
                                         <div style="display:flex;flex-direction:column;gap:6px">
                                             <label style="font-size:0.9em;color:#4b5563">Password</label>
-                                            <input type="password" id="loginPass" required
-                                                style="padding:10px;border:1px solid #d1d5db;border-radius:6px">
+                                            <div style="position:relative">
+                                                <input type="password" id="loginPass" required
+                                                    style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:6px">
+                                                <button type="button" onclick="const i=document.getElementById('loginPass'); i.type=i.type==='password'?'text':'password'; this.textContent=i.type==='text'?'👁️':'👁️‍🗨️'" 
+                                                        style="position:absolute;right:10px;top:10px;background:none;border:none;cursor:pointer">👁️‍🗨️</button>
+                                            </div>
                                         </div>
                                         <button type="submit" 
-                                                style="background:#2563eb;color:white;border:none;padding:12px;border-radius:6px;font-weight:600;cursor:pointer;margin-top:10px">
+                                                style="background:#15803d;color:white;border:none;padding:12px;border-radius:6px;font-weight:600;cursor:pointer;margin-top:10px">
                                             Login
                                         </button>
                                     </div>
                                 </form>
                                 <p style="margin-top:20px;text-align:center;font-size:0.9em;color:#6b7280">
-                                    <a href="#" onclick="document.getElementById('loginForm').style.display='none';document.getElementById('resetForm').style.display='block'" style="color:#2563eb">Forgot Password?</a>
+                                    <a href="#" onclick="document.getElementById('loginForm').style.display='none';document.getElementById('resetForm').style.display='block'" style="color:#0ea5e9">Admin Support (Forgot Password)</a>
                                     <br><br>
-                                    Need to reset everything? <a href="#" onclick="if(confirm('This will delete fully your data. Are you sure?')) { localStorage.removeItem('mmed_tracker_data');location.reload(); }" style="color:#ef4444">Clear Data</a>
+                                    Need to re-activate? <a href="#" onclick="if(confirm('This will delete all local data and require reactivation. Are you sure?')) { localStorage.removeItem('mmed_tracker_data');location.reload(); }" style="color:#ef4444">Reset Local Data</a>
                                 </p>
                             </div>
 
                             <div id="resetForm" style="display:none">
                                 <form onsubmit="event.preventDefault(); if(state.resetPassword(document.getElementById('resetId').value, document.getElementById('resetAns').value, document.getElementById('resetNewPass').value)) { alert('Password Reset Successful!'); render(); } else alert('Incorrect ID or Security Answer');">
-                                    <h2 style="font-size:1.2em;font-weight:600;margin-bottom:20px;color:#374151">Reset Password</h2>
+                                    <h2 style="font-size:1.2em;font-weight:600;margin-bottom:20px;color:#374151">Admin Support</h2>
+                                    <p style="font-size:0.9em;color:#6b7280;margin-bottom:15px">Verify your identity to reset password.</p>
                                     <div style="display:grid;gap:16px">
                                         <div style="display:flex;flex-direction:column;gap:6px">
                                             <label style="font-size:0.9em;color:#4b5563">ID Number</label>
@@ -1458,8 +1513,8 @@
                                         </div>
                                         <div style="display:flex;flex-direction:column;gap:6px">
                                             <label style="font-size:0.9em;color:#4b5563">Security Question</label>
-                                            <div style="padding:10px;background:#f3f4f6;border-radius:6px;color:#374151;font-size:0.9em">
-                                                ${JSON.parse(localStorage.getItem('mmed_tracker_data')).user.securityQuestion || 'No security question set.'}
+                                            <div style="padding:10px;background:#f3f4f6;border-radius:6px;color:#374151;font-size:0.9em;border:1px solid #e5e7eb">
+                                                ${JSON.parse(localStorage.getItem('mmed_tracker_data')).account ? JSON.parse(localStorage.getItem('mmed_tracker_data')).account.securityQuestion : 'No security question set.'}
                                             </div>
                                         </div>
                                         <div style="display:flex;flex-direction:column;gap:6px">
@@ -1473,7 +1528,7 @@
                                                 style="padding:10px;border:1px solid #d1d5db;border-radius:6px">
                                         </div>
                                         <button type="submit" 
-                                                style="background:#22c55e;color:white;border:none;padding:12px;border-radius:6px;font-weight:600;cursor:pointer;margin-top:10px">
+                                                style="background:#0ea5e9;color:white;border:none;padding:12px;border-radius:6px;font-weight:600;cursor:pointer;margin-top:10px">
                                             Reset Password
                                         </button>
                                     </div>
@@ -1483,8 +1538,19 @@
                                 </form>
                             </div>
                         ` : `
-                            <form onsubmit="event.preventDefault(); state.register(document.getElementById('regName').value, document.getElementById('regId').value, document.getElementById('regYear').value, document.getElementById('regPass').value, document.getElementById('regQ').value, document.getElementById('regA').value) && render()">
-                                <h2 style="font-size:1.2em;font-weight:600;margin-bottom:20px;color:#374151">Student Registration</h2>
+                            <form onsubmit="event.preventDefault(); 
+                                            const name = document.getElementById('regName').value;
+                                            const id = document.getElementById('regId').value;
+                                            const year = document.getElementById('regYear').value;
+                                            const q = document.getElementById('regQ').value;
+                                            const a = document.getElementById('regA').value;
+                                            // Admin simplified flow: Default password
+                                            state.register(name, id, year, 'RURAL2026', q, a);
+                                            alert('Account Activated!\\n\\nDefault Password: RURAL2026\\n\\nPlease change this immediately after login.');
+                                            render();">
+                                <h2 style="font-size:1.2em;font-weight:600;margin-bottom:20px;color:#374151">Activate Account</h2>
+                                <p style="font-size:0.9em;color:#6b7280;margin-bottom:20px">Enter your registration details to retrieve your credentials.</p>
+                                
                                 <div style="display:grid;gap:16px">
                                     <div style="display:flex;flex-direction:column;gap:6px">
                                         <label style="font-size:0.9em;color:#4b5563">Full Name</label>
@@ -1507,14 +1573,10 @@
                                             <option value="6">Year 6</option>
                                         </select>
                                     </div>
-                                    <div style="display:flex;flex-direction:column;gap:6px">
-                                        <label style="font-size:0.9em;color:#4b5563">Create Password</label>
-                                        <input type="password" id="regPass" required placeholder="Keep it simple"
-                                               style="padding:10px;border:1px solid #d1d5db;border-radius:6px">
-                                    </div>
                                     
                                      <div style="border-top:1px solid #e5e7eb;padding-top:16px;margin-top:4px">
-                                        <h3 style="font-size:1em;font-weight:600;color:#374151;margin-bottom:12px">Account Recovery</h3>
+                                        <h3 style="font-size:1em;font-weight:600;color:#374151;margin-bottom:12px">Account Security</h3>
+                                        <p style="font-size:0.85em;color:#6b7280;margin-bottom:10px">Set a security question for password recovery.</p>
                                         <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">
                                             <label style="font-size:0.9em;color:#4b5563">Security Question</label>
                                             <select id="regQ" required style="padding:10px;border:1px solid #d1d5db;border-radius:6px">
@@ -1532,8 +1594,8 @@
                                     </div>
 
                                     <button type="submit" 
-                                            style="background:#22c55e;color:white;border:none;padding:12px;border-radius:6px;font-weight:600;cursor:pointer;margin-top:10px">
-                                        Create Profile
+                                            style="background:#15803d;color:white;border:none;padding:12px;border-radius:6px;font-weight:600;cursor:pointer;margin-top:10px">
+                                        Activate Account
                                     </button>
                                 </div>
                             </form>
@@ -1544,10 +1606,47 @@
             `;
         }
 
+        function renderChangePasswordModal() {
+            const modal = document.createElement('div');
+            modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:1000';
+            modal.innerHTML = `
+                <div style="background:white;padding:30px;border-radius:12px;width:100%;max-width:400px;box-shadow:0 20px 25px -5px rgba(0,0,0,0.1)">
+                    <h2 style="color:#d97706;font-size:1.5em;font-weight:bold;margin-bottom:10px">Security Update Required</h2>
+                    <p style="color:#4b5563;margin-bottom:20px">For your security, you must change your default password before continuing.</p>
+                    
+                    <form onsubmit="event.preventDefault(); const p1=document.getElementById('newP1').value; const p2=document.getElementById('newP2').value; if(p1===p2) { state.changePassword(p1); render(); } else { alert('Passwords do not match'); }">
+                        <div style="display:flex;flex-direction:column;gap:15px">
+                            <div style="display:flex;flex-direction:column;gap:6px">
+                                <label style="font-size:0.9em;color:#4b5563">New Password</label>
+                                <input type="password" id="newP1" required minlength="4"
+                                       style="padding:10px;border:1px solid #d1d5db;border-radius:6px">
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:6px">
+                                <label style="font-size:0.9em;color:#4b5563">Confirm Password</label>
+                                <input type="password" id="newP2" required minlength="4"
+                                       style="padding:10px;border:1px solid #d1d5db;border-radius:6px">
+                            </div>
+                            <button type="submit" 
+                                    style="background:#d97706;color:white;border:none;padding:12px;border-radius:6px;font-weight:600;cursor:pointer;margin-top:10px">
+                                Update Password
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            `;
+            document.body.appendChild(modal);
+        }
+
         function render() {
-            if (!state.user) {
+            if (!state.session || !state.session.isLoggedIn) {
                 renderLogin();
                 return;
+            }
+
+            if (state.account && state.account.needsPasswordChange) {
+                renderChangePasswordModal();
+                // We still render the app behind the modal, or just the modal. 
+                // Let's render the app but with the modal on top.
             }
 
             const app = document.getElementById('app');
@@ -1570,7 +1669,7 @@
                             <h2 style="font-weight:bold;font-size:1.2em;color:#60a5fa">MMED Tracker</h2>
                             <div style="margin-top:8px;font-size:0.85em;color:#9ca3af;display:flex;align-items:center;gap:8px">
                                 <div style="width:8px;height:8px;background:#22c55e;border-radius:50%"></div>
-                                ${state.user.name} (${state.user.id})
+                                ${state.account.name} (${state.account.id})
                             </div>
                             <div style="margin-top:4px;font-size:0.75em;color:#34d399;display:flex;align-items:center;gap:4px">
                                 <span>✅</span> All changes saved
@@ -1601,7 +1700,7 @@
                             <button onclick="state.activeTab='logbook';render()" style="width:100%;text-align:left;padding:10px 12px;border:none;border-radius:6px;cursor:pointer;background:${state.activeTab === 'logbook' ? '#374151' : 'transparent'};color:#e5e7eb">📋 Master Logbook</button>
                             
                             <div style="margin-top:40px;border-top:1px solid #374151;padding-top:20px">
-                                <button onclick="state.user=null;render()" 
+                                <button onclick="state.logout();render()" 
                                         style="width:100%;text-align:left;padding:10px 12px;border:none;border-radius:6px;cursor:pointer;color:#ef4444;display:flex;align-items:center;gap:10px;background:transparent;transition:background 0.2s"
                                         onmouseover="this.style.background='rgba(239,68,68,0.1)'" onmouseout="this.style.background='transparent'">
                                     <span>🚪</span>
