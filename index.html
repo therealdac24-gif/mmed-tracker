@@ -451,10 +451,20 @@
                 reader.readAsText(file);
             }
 
-            register(name, id, year, password) {
-                this.user = { name, id, year, password };
+            register(name, id, year, password, question, answer) {
+                this.user = { name, id, year, password, securityQuestion: question, securityAnswer: answer };
                 this.saveData();
                 return true;
+            }
+
+            resetPassword(id, answer, newPassword) {
+                if (!this.user || this.user.id !== id) return false;
+                if (this.user.securityAnswer && this.user.securityAnswer.toLowerCase() === answer.toLowerCase()) {
+                    this.user.password = newPassword;
+                    this.saveData();
+                    return true;
+                }
+                return false;
             }
 
             login(id, password) {
@@ -1410,30 +1420,70 @@
                         </div>
 
                         ${localStorage.getItem('mmed_tracker_data') && JSON.parse(localStorage.getItem('mmed_tracker_data')).user ? `
-                            <form onsubmit="event.preventDefault(); if(state.login(document.getElementById('loginId').value, document.getElementById('loginPass').value)) render(); else alert('Invalid credentials');">
-                                <h2 style="font-size:1.2em;font-weight:600;margin-bottom:20px;color:#374151">Welcome Back</h2>
-                                <div style="display:grid;gap:16px">
-                                    <div style="display:flex;flex-direction:column;gap:6px">
-                                        <label style="font-size:0.9em;color:#4b5563">ID Number</label>
-                                        <input type="text" id="loginId" required placeholder="e.g. 20100540"
-                                               style="padding:10px;border:1px solid #d1d5db;border-radius:6px">
+                            <div id="loginForm">
+                                <form onsubmit="event.preventDefault(); if(state.login(document.getElementById('loginId').value, document.getElementById('loginPass').value)) render(); else alert('Invalid credentials');">
+                                    <h2 style="font-size:1.2em;font-weight:600;margin-bottom:20px;color:#374151">Welcome Back</h2>
+                                    <div style="display:grid;gap:16px">
+                                        <div style="display:flex;flex-direction:column;gap:6px">
+                                            <label style="font-size:0.9em;color:#4b5563">ID Number</label>
+                                            <input type="text" id="loginId" required placeholder="e.g. 20100540"
+                                                style="padding:10px;border:1px solid #d1d5db;border-radius:6px">
+                                        </div>
+                                        <div style="display:flex;flex-direction:column;gap:6px">
+                                            <label style="font-size:0.9em;color:#4b5563">Password</label>
+                                            <input type="password" id="loginPass" required
+                                                style="padding:10px;border:1px solid #d1d5db;border-radius:6px">
+                                        </div>
+                                        <button type="submit" 
+                                                style="background:#2563eb;color:white;border:none;padding:12px;border-radius:6px;font-weight:600;cursor:pointer;margin-top:10px">
+                                            Login
+                                        </button>
                                     </div>
-                                    <div style="display:flex;flex-direction:column;gap:6px">
-                                        <label style="font-size:0.9em;color:#4b5563">Password</label>
-                                        <input type="password" id="loginPass" required
-                                               style="padding:10px;border:1px solid #d1d5db;border-radius:6px">
-                                    </div>
-                                    <button type="submit" 
-                                            style="background:#2563eb;color:white;border:none;padding:12px;border-radius:6px;font-weight:600;cursor:pointer;margin-top:10px">
-                                        Login
-                                    </button>
-                                </div>
+                                </form>
                                 <p style="margin-top:20px;text-align:center;font-size:0.9em;color:#6b7280">
-                                    Need to reset? <a href="#" onclick="localStorage.removeItem('mmed_tracker_data');location.reload()" style="color:#2563eb">Clear Data</a>
+                                    <a href="#" onclick="document.getElementById('loginForm').style.display='none';document.getElementById('resetForm').style.display='block'" style="color:#2563eb">Forgot Password?</a>
+                                    <br><br>
+                                    Need to reset everything? <a href="#" onclick="if(confirm('This will delete fully your data. Are you sure?')) { localStorage.removeItem('mmed_tracker_data');location.reload(); }" style="color:#ef4444">Clear Data</a>
                                 </p>
-                            </form>
+                            </div>
+
+                            <div id="resetForm" style="display:none">
+                                <form onsubmit="event.preventDefault(); if(state.resetPassword(document.getElementById('resetId').value, document.getElementById('resetAns').value, document.getElementById('resetNewPass').value)) { alert('Password Reset Successful!'); render(); } else alert('Incorrect ID or Security Answer');">
+                                    <h2 style="font-size:1.2em;font-weight:600;margin-bottom:20px;color:#374151">Reset Password</h2>
+                                    <div style="display:grid;gap:16px">
+                                        <div style="display:flex;flex-direction:column;gap:6px">
+                                            <label style="font-size:0.9em;color:#4b5563">ID Number</label>
+                                            <input type="text" id="resetId" required placeholder="e.g. 20100540"
+                                                style="padding:10px;border:1px solid #d1d5db;border-radius:6px">
+                                        </div>
+                                        <div style="display:flex;flex-direction:column;gap:6px">
+                                            <label style="font-size:0.9em;color:#4b5563">Security Question</label>
+                                            <div style="padding:10px;background:#f3f4f6;border-radius:6px;color:#374151;font-size:0.9em">
+                                                ${JSON.parse(localStorage.getItem('mmed_tracker_data')).user.securityQuestion || 'No security question set.'}
+                                            </div>
+                                        </div>
+                                        <div style="display:flex;flex-direction:column;gap:6px">
+                                            <label style="font-size:0.9em;color:#4b5563">Security Answer</label>
+                                            <input type="text" id="resetAns" required placeholder="Your answer"
+                                                style="padding:10px;border:1px solid #d1d5db;border-radius:6px">
+                                        </div>
+                                        <div style="display:flex;flex-direction:column;gap:6px">
+                                            <label style="font-size:0.9em;color:#4b5563">New Password</label>
+                                            <input type="password" id="resetNewPass" required
+                                                style="padding:10px;border:1px solid #d1d5db;border-radius:6px">
+                                        </div>
+                                        <button type="submit" 
+                                                style="background:#22c55e;color:white;border:none;padding:12px;border-radius:6px;font-weight:600;cursor:pointer;margin-top:10px">
+                                            Reset Password
+                                        </button>
+                                    </div>
+                                     <p style="margin-top:20px;text-align:center;font-size:0.9em;">
+                                        <a href="#" onclick="document.getElementById('resetForm').style.display='none';document.getElementById('loginForm').style.display='block'" style="color:#6b7280">Back to Login</a>
+                                    </p>
+                                </form>
+                            </div>
                         ` : `
-                            <form onsubmit="event.preventDefault(); state.register(document.getElementById('regName').value, document.getElementById('regId').value, document.getElementById('regYear').value, document.getElementById('regPass').value) && render()">
+                            <form onsubmit="event.preventDefault(); state.register(document.getElementById('regName').value, document.getElementById('regId').value, document.getElementById('regYear').value, document.getElementById('regPass').value, document.getElementById('regQ').value, document.getElementById('regA').value) && render()">
                                 <h2 style="font-size:1.2em;font-weight:600;margin-bottom:20px;color:#374151">Student Registration</h2>
                                 <div style="display:grid;gap:16px">
                                     <div style="display:flex;flex-direction:column;gap:6px">
@@ -1462,6 +1512,25 @@
                                         <input type="password" id="regPass" required placeholder="Keep it simple"
                                                style="padding:10px;border:1px solid #d1d5db;border-radius:6px">
                                     </div>
+                                    
+                                     <div style="border-top:1px solid #e5e7eb;padding-top:16px;margin-top:4px">
+                                        <h3 style="font-size:1em;font-weight:600;color:#374151;margin-bottom:12px">Account Recovery</h3>
+                                        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">
+                                            <label style="font-size:0.9em;color:#4b5563">Security Question</label>
+                                            <select id="regQ" required style="padding:10px;border:1px solid #d1d5db;border-radius:6px">
+                                                <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
+                                                <option value="What was the name of your first pet?">What was the name of your first pet?</option>
+                                                <option value="What city were you born in?">What city were you born in?</option>
+                                                <option value="What is your favorite book?">What is your favorite book?</option>
+                                            </select>
+                                        </div>
+                                        <div style="display:flex;flex-direction:column;gap:6px">
+                                            <label style="font-size:0.9em;color:#4b5563">Security Answer</label>
+                                            <input type="text" id="regA" required placeholder="Answer"
+                                                style="padding:10px;border:1px solid #d1d5db;border-radius:6px">
+                                        </div>
+                                    </div>
+
                                     <button type="submit" 
                                             style="background:#22c55e;color:white;border:none;padding:12px;border-radius:6px;font-weight:600;cursor:pointer;margin-top:10px">
                                         Create Profile
